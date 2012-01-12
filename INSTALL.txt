@@ -1,0 +1,8 @@
+1- Setup .hg.conf:
+
+2- Archive browser framework:
+
+3- Check permissions of directories:
+
+trackDb
+webroot

@@ -1,0 +1,830 @@
+#!/bin/bash
+#    cgb -- create custom instances of the UCSC Genome Browser
+#    Copyright (C) 2011  Vincenzo Forgetta, Pascale Marquis
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+
+# TODO: 
+#      - Add check that subsequent steps have the required data from previous steps i.e. clade should have a browser instance, etc.
+#      - Comment code thouroughly, in particular the setting of emvironment variables
+#      - Be more informative when prompting user for passwords i.e. which password.
+#      - Redirect STDERR of programs to log file.
+
+## To grant access for hgsql save text below (remove # signs) to ~/.hg.conf, chmod 600 ~/.hg.conf
+# db.trackDb=trackDb
+# db.host=localhost
+# db.user=browser
+# db.password=genome
+# central.db=hgcentral
+# central.user=browser
+# central.password=genome
+# central.host=localhost
+# central.domain=
+
+## TERMINAL COLORS
+bldred='\e[1;31m'
+bldwht='\e[1;37m'
+txtgrn='\e[0;32m'
+bldylw='\e[1;33m'
+txtcyn='\e[0;36m'
+txtpur='\e[0;35m'
+
+## GENERAL ENVIRONMENT VARIABLES
+# path to ucsc binaries e.g. hgLoadBed, faToTwoBit, etc.
+export PATH=$PATH:/data/share/ucsc/bin/
+APACHE_DOMAIN="genomequebec.mcgill.ca"
+# Apache vhost file.
+APACHE_COMPGEN_VHOST=/etc/apache2/vhosts.d/compgen_vhost.conf
+# Location where to store each home page
+BROWSER_WEB_HOME=/data/www/htdocs/compgen/
+# Archive that contsins the UCSC Genome Browser CGI binaries and HTML files.
+BROWSER_WEB_TEMPLATE_DIST=${BROWSER_WEB_HOME}/browser-template.25112010.tar.gz
+# Location to store the genome builds and tracks
+GBDB_DIR=/data/share/ucsc/gbdb/
+# Source code for the UCSC Genome Browser, specifically the src/hg/lib directory
+KENT_LIB=/data/share/ucsc/jksrc/kent/src/hg/lib/
+# Location of the trackDb directory i.e. where to store the trackDb.ra files.
+TRACKDB_DIR=/data/share/ucsc/trackDb25112010/
+# Mysql user name that has priviledges to create a database
+MYSQL_USER=vforgetta
+
+# Location of cgb, DO NOT MODIFY
+INSTALL_DIR=`dirname $0`
+SCRIPT_DIR=${INSTALL_DIR}/scripts/
+
+# internal function to run MySQL command for the $CLIENT_HGCENTRAL database
+function mysql_hgcentral {
+    MYSQL_STATEMENT=$1
+    MYSQL_CMD="hgsql ${CLIENT_HGCENTRAL} -e \"$MYSQL_STATEMENT\""
+    # MYSQL_CMD="mysql -u $MYSQL_USER -p $CLIENT_HGCENTRAL -e \"$MYSQL_STATEMENT\""
+    echo Executing: $MYSQL_CMD
+    until eval $MYSQL_CMD; do
+    	echo -n "Invalid password or MySQL error ... retry? (Y/n): "
+	read ans
+	if [ "$ans" = 'n' ];
+	then
+	    break;
+	fi
+    done
+}
+
+# Internal function to init some tracks
+function init_trackDb {
+    
+    echo "
+track gc5Base
+shortLabel GC Percent
+longLabel GC Percent in 5-Base Windows
+group map
+priority 5
+visibility hide
+autoScale on
+maxHeightPixels 128:36:18
+graphTypeDefault Bar
+gridDefault OFF
+windowingFunction Mean
+color 100,100,100
+altColor 100,100,100
+spanList 5
+type wig 0 100
+
+track contigs
+shortLabel Contigs
+longLabel GS Assembly contigs
+group map
+priority 3
+visibility hide
+color 0,0,0
+type bed 6 .
+itemRgb on
+
+searchTable contigs
+searchType bed
+searchMethod fuzzy
+
+track scaffolds
+shortLabel scaffolds
+longLabel GS Assembly scaffolds
+group map
+priority 1
+visibility hide
+color 0,0,0
+type bed 9 .
+itemRgb on
+
+searchTable scaffolds
+searchType bed
+searchMethod fuzzy
+
+track gaps
+shortLabel Gaps
+longLabel GS Assembly gaps
+group map
+priority 4
+visibility hide
+color 255,0,0
+type bed 4 .
+
+searchTable gaps
+searchType bed
+searchMethod fuzzy
+
+track depth
+shortLabel Read Depth
+longLabel Read depth of coverage
+group map
+priority 5.2
+visibility full
+autoScale on
+maxHeightPixels 128:18:18
+graphTypeDefault Bar
+windowingFunction Mean
+gridDefault OFF
+color 100,50,0
+altColor 255,128,0
+spanList 1,1024
+smoothingWindow 4
+type wig 0.0 400.0
+
+" > ${CLIENT_TRACKDB_DIR}/${BUILD}/trackDb.ra
+   
+}
+
+
+# Setup a password-protected instance of the UCSC Genome Browser
+function create_instance {
+
+    ## Create web directory to store browser instance
+    if ( mkdir "$CLIENT_BROWSER_ROOT" );
+    then
+	    echo "Creating target directory ${CLIENT_BROWSER_ROOT}."
+    else
+        echo "Target directory already exists or you do not have permissions to create it."
+        exit 1;
+    fi
+    
+    if ( mkdir "$CLIENT_TRACKDB_DIR" );
+    then
+	    echo "Creating target directory ${CLIENT_TRACKDB_DIR}."
+    else
+        echo "Target directory already exists or you do not have permissions to create it."
+        exit 1;
+    fi
+    
+    ## Extract browser template, set permissions
+    tar -C $CLIENT_BROWSER_ROOT -xzf $BROWSER_WEB_TEMPLATE_DIST
+    setfacl -R -m u:apache:rwx $CLIENT_BROWSER_ROOT/js
+    setfacl -R -m u:apache:rwx $CLIENT_BROWSER_ROOT/trash
+
+    ## Setup apache for the client
+    echo "COPY THE CODE BELOW AND PASTE INTO /etc/apache2/vhosts.d/compgen_vhost.conf JUST ABOVE THE LAST LINE \"</VirtualHost>\"";
+    echo "    
+    # Created using CGB script on `date`
+    ScriptAlias ${CLIENT_BROWSER_WEBROOT} \"${CLIENT_BROWSER_CGIBIN}\"
+    <Directory \"${CLIENT_BROWSER_CGIBIN}\">
+        XBitHack On
+        Options ExecCGI +Includes
+        AddHandler cgi-script .pl
+            AuthType Basic
+        AuthName \"Restricted Files\"
+        AuthUserFile ${CLIENT_BROWSER_ROOT}/password
+        Require user ${CLIENT_NAME}
+    </Directory>
+
+For easy editing try: emacs /etc/apache2/vhosts.d/compgen_vhost.conf
+"
+    echo "When complete press Enter to continue ..."
+    read input
+    echo "Enter password for ${CLIENT_NAME}:"
+    until htpasswd -c ${CLIENT_BROWSER_ROOT}/password ${CLIENT_NAME}; do
+        echo "Error setting client password. Retry ..."
+    done
+    echo "Restarting apache web server (may require you to enter your login password, NOT the one you just created!) ..."
+    
+    until sudo /etc/init.d/apache2 restart; do
+        echo "Error restarting apache. Retry ..."
+    done
+    
+   ## Create new hg.conf
+    echo  "db.host=localhost
+db.user=readonly
+db.password=access
+db.trackDb=trackDb
+dg.grp=grp
+browser.documentRoot=${CLIENT_BROWSER_ROOT}
+central.db=${CLIENT_HGCENTRAL}
+backupcentral.db=${CLIENT_HGCENTRAL}
+browser.indelOptions=on
+central.host=localhost
+central.user=readwrite
+central.password=update
+central.domain=.genomequebec.mcgill.ca
+browser.background=../images/floret.jpg
+hgTracks.trackReordering=on
+backupcentral.host=localhost
+backupcentral.user=readwrite
+backupcentral.password=update
+backupcentral.domain=local
+customTracks.host=localhost
+customTracks.user=browser
+customTracks.password=genome
+customTracks.useAll=yes
+customTracks.tmpdir=/data/www/htdocs/compgen/tmp
+hgTracks.trackReordering=on
+" > ${CLIENT_BROWSER_CGIBIN}/hg.conf
+    chmod 444 ${CLIENT_BROWSER_CGIBIN}/hg.conf
+## Create gbdb directory to store browser instance
+    if ( mkdir "$CLIENT_GBDB_DIR" );
+    then
+	    echo "Creating target directory ${CLIENT_GBDB_DIR}."
+    else
+        echo "Target directory already exists or you do not have sufficient priviledges to create it."
+        exit 1;
+    fi
+    
+## Create hgcentral database for client
+    echo "Creating hgcentral db ${CLIENT_HGCENTRAL} for the client: ${CLIENT_NAME} (may require you to enter MYSQL password).
+WARNING: This will replace any existing database with the same name. If unsure, quit this process now my pressing Ctrl-c.
+"
+    echo "DROP DATABASE IF EXISTS ${CLIENT_HGCENTRAL}; 
+create database ${CLIENT_HGCENTRAL};
+use ${CLIENT_HGCENTRAL};
+source ${CLIENT_BROWSER_ROOT}/hgcentral.sql;
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on ${CLIENT_HGCENTRAL}.* to browser@localhost IDENTIFIED BY 'genome';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on hgFixed.* to browser@localhost IDENTIFIED BY 'genome';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on ${CLIENT_HGCENTRAL}.* to readwrite@localhost IDENTIFIED BY 'update';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on hgFixed.* to readwrite@localhost IDENTIFIED BY 'update';
+GRANT SELECT on ${CLIENT_HGCENTRAL}.* to readonly@localhost IDENTIFIED BY 'access';
+GRANT SELECT on hgFixed.* to readonly@localhost IDENTIFIED BY 'access';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on proteins01.* to browser@localhost IDENTIFIED BY 'genome';
+GRANT SELECT on proteins01.* to readonly@localhost IDENTIFIED BY 'access';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on customTrash.* to browser@localhost IDENTIFIED by 'genome';
+;" > $CLIENT_GBDB_DIR/${CLIENT_HGCENTRAL}.sql
+    
+    until mysql -u $MYSQL_USER -p < $CLIENT_GBDB_DIR/${CLIENT_HGCENTRAL}.sql; do
+        echo -n "Invalid Password ... retry? (Y/n): "
+        read ans
+        if [ "$ans" = 'n' ];
+        then
+            break;
+        fi
+    done
+    
+    echo "Naviate to http://${APACHE_DOMAIN}/${CLIENT_BROWSER_WEBROOT}/hgGateway, 
+enter the appropriate credentials and you should get the following result:
+
+   Can't find genome \"Human\" in central database table defaultDb.
+"
+
+}
+
+# Remove an instance of the UCSC Genome Browser.
+function remove_instance {
+    echo -n "Are you sure (Y/n): "
+    read ans
+    if [ "$ans" = 'Y' ];
+    then
+        rm -Rf $CLIENT_GBDB_DIR $CLIENT_BROWSER_ROOT $CLIENT_TRACKDB_DIR
+        
+        echo "Enter MYSQL password to drop ${CLIENT_HGCENTRAL}:"
+        until mysql -u $MYSQL_USER -p -e "drop database if exists ${CLIENT_HGCENTRAL};"; do
+            echo -n "Invalid Password ... retry? (Y/n): "
+            read ans
+            if [ "$ans" = 'n' ];
+            then
+                break;
+            fi
+        done
+        echo -e "Don't forget to:
+\t- Remove the entry in /etc/apache2/vhosts.d/compgen_vhost.conf.
+\t- Unload the BLAT servers for the builds.
+"
+    else
+        echo "Bye."
+        exit 0;
+    fi
+}
+
+
+# Add, remove, list "clade" entries in hgcentral
+function add_clade {
+    args=$@
+    LABEL=${args[1]}
+    NAME=${args[2]}
+    PRIORITY=${args[3]}
+    mysql_hgcentral "INSERT INTO clade (name, label, priority) VALUES ('${NAME}','${LABEL}', ${PRIORITY});"
+}
+
+function remove_clade {
+    args=$@
+    NAME=${args[1]}
+    mysql_hgcentral "DELETE FROM clade WHERE name = '${NAME}';"
+}
+
+function list_clade {
+    mysql_hgcentral "SELECT g.* FROM clade AS g \G;"
+}
+
+# Add, remove, list "genome" entries in hgcentral
+function add_genome {
+    args=$@
+    GENOME=${args[1]}
+    CLADE=${args[2]}
+    PRIORITY=${args[3]}
+    mysql_hgcentral "INSERT INTO genomeClade (genome, clade, priority) VALUES ('${GENOME}','${CLADE}',$PRIORITY);"
+}
+
+function remove_genome {
+    GENOME=$1
+    mysql_hgcentral "DELETE FROM genomeClade WHERE genome = '${GENOME}';"
+}
+
+function list_genome {
+    mysql_hgcentral "SELECT g.* FROM genomeClade as g \G;"
+}
+
+
+# Add, remove, list "defaultDb" entries in hgcentral
+function add_defaultdb {
+    args=$@
+    GENOME=${args[1]}
+    BUILD=${args[2]}
+    mysql_hgcentral "INSERT INTO defaultDb (genome, name) VALUES ('${GENOME}','${BUILD}');"
+}
+
+function remove_defaultdb {
+    args=$@
+    BUILD=${args[1]}
+    mysql_hgcentral "DELETE FROM defaultDb WHERE name = '${BUILD}';"
+}
+
+function list_defaultdb {
+    mysql_hgcentral 'SELECT g.* FROM defaultDb AS g \G;'
+}
+
+# Add a genome build
+function add_build {
+    args=$@
+    BUILD=${args[1]}
+    BUILD_DESC=${args[2]}
+    GENOME=${args[3]}
+    CHROM=${args[4]}
+    FULL_NAME=${args[5]}
+    REFERENCE=${args[6]}
+    TAXID=${args[7]}
+    BUILD_DIR=${CLIENT_GBDB_DIR}/${BUILD}/
+    
+    if ( mkdir "${BUILD_DIR}" );
+    then
+	    echo "Creating target directory ${BUILD_DIR}."
+        mkdir ${CLIENT_GBDB_DIR}/${BUILD}/html
+    else
+        echo "Target directory already exists or you do not have permissions to create it."
+        exit 1;
+    fi
+    
+    echo "INSERT INTO dbDb (name, description, nibPath, organism, defaultPos, active, orderKey, genome, scientificName, htmlPath, hgNearOk, hgPbOk, sourceName, taxId) VALUES ('${BUILD}','${BUILD_DESC}','${BUILD_DIR}','${GENOME}', '${CHROM}',1,1,'${GENOME}','${FULL_NAME}','${BUILD_DIR}/html/description.html', 1, 1,'${REFERENCE}', ${TAXID});
+INSERT INTO gdbPdb (genomeDb, proteomeDb) VALUES ('${BUILD}','proteins01');
+" > ${CLIENT_GBDB_DIR}/${BUILD}/hgcentral_${BUILD}.sql
+    
+    mysql_hgcentral "source ${BUILD_DIR}/hgcentral_${BUILD}.sql;"
+    until mysql -u $MYSQL_USER -p -e "create database ${BUILD}; GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on ${BUILD}.* to browser@localhost IDENTIFIED BY 'genome'; GRANT SELECT on ${BUILD}.* to readonly@localhost IDENTIFIED BY 'access';"; do
+        echo -n "Invalid Password ... retry? (Y/n): "
+        read ans
+        if [ "$ans" = 'n' ];
+        then
+            break;
+        fi
+    done
+    
+ 
+}
+
+# Remove a build
+function remove_build {
+    args=$@
+    BUILD=${args[1]}
+    mysql_hgcentral "DELETE FROM dbDb WHERE name = '${BUILD}'; DELETE FROM gdbPdb WHERE genomeDb = '${BUILD}';"
+    until mysql -u $MYSQL_USER -p -e "DROP DATABASE IF EXISTS ${BUILD};"; do
+        echo -n "Invalid Password ... retry? (Y/n): "
+        read ans
+        if [ "$ans" = 'n' ];
+        then
+            break;
+        fi
+    done
+    rm -Rf ${CLIENT_GBDB_DIR}/${BUILD}
+    rm -Rf ${CLIENT_TRACKDB_DIR}/${BUILD}
+}
+
+# List genome build for client
+function list_build {
+    mysql_hgcentral 'SELECT g.* FROM dbDb AS g \G;'
+}
+
+# start BLAT servers and add row entriies
+function add_blat {
+    args=$@
+    BUILD=${args[1]}
+    BLAT_PORT1=${args[2]}
+    BLAT_PORT2=${args[3]}
+    BUILD_DIR=${CLIENT_GBDB_DIR}/${BUILD}/
+    mysql_hgcentral "INSERT INTO blatServers (db, host, port, isTrans, canPcr) VALUES ('${BUILD}', 'localhost', ${BLAT_PORT1}, 0, 1); \
+    INSERT INTO blatServers (db, host, port, isTrans, canPcr) VALUES ('${BUILD}', 'localhost', ${BLAT_PORT2}, 1, 0);"
+    CWD=`pwd`
+    cd ${BUILD_DIR}
+    /usr/bin/nohup gfServer start localhost $BLAT_PORT1 ${BUILD}.2bit -stepSize=5  -canStop &
+    sleep 1
+    /usr/bin/nohup gfServer start localhost $BLAT_PORT2 ${BUILD}.2bit -stepSize=5  -trans -canStop &
+    cd $CWD
+}
+
+# Stop BLAT servers and delete row entries
+function del_blat {
+    args=$@
+    BUILD=${args[1]}
+    BLAT_PORT1=${args[2]}
+    BLAT_PORT2=${args[3]}
+    mysql_hgcentral "DELETE FROM blatServers WHERE db = '${BUILD}';"
+    echo "Stopping server at port $BLAT_PORT1"
+    gfServer stop localhost $BLAT_PORT1
+    sleep 2
+    echo "Stopping server at port $BLAT_PORT2"
+    gfServer stop localhost $BLAT_PORT2
+    sleep 2
+   
+}
+
+# List BLAT databases for the client
+function list_blat {
+    mysql_hgcentral 'SELECT g.* FROM blatServers AS g \G;'
+}
+
+
+
+
+# add a 454 assembly to a genome build. Sorts contigs my length
+function add_454_assembly {
+    args=$@
+    BUILD=${args[1]}
+    CHROM=${args[2]}
+    ASSEMBLY_DIR=${args[3]}
+    BUILD_DIR=${CLIENT_GBDB_DIR}/${BUILD}/
+    
+    mkdir ${CLIENT_TRACKDB_DIR}/${BUILD}
+    chmod -R 755 ${BUILD_DIR}
+        
+    # Create chrom, contigs.bed and gaps.bed
+    python ${SCRIPT_DIR}/chromByLen.py ${ASSEMBLY_DIR}/454LargeContigs.fna ${CHROM} ${BUILD_DIR} > ${BUILD_DIR}/${BUILD}.fasta
+    chmod 755 ${BUILD_DIR}/${BUILD}.fasta
+    faToTwoBit ${BUILD_DIR}/${BUILD}.fasta ${BUILD_DIR}/${BUILD}.2bit
+    
+    # Load chrom
+    hgsql ${BUILD} < ${GBDB_DIR}/grp.sql
+    hgsql ${BUILD} -e "load data local infile \"${GBDB_DIR}/grp.txt\" into table grp;"
+    hgsql ${BUILD} < ${KENT_LIB}/chromInfo.sql
+    twoBitInfo ${BUILD_DIR}/${BUILD}.2bit stdout | awk -v TWOBIT="$BUILD_DIR/$BUILD.2bit" '{ print sprintf("%s\t%s\t", $1, $2) TWOBIT }' | perl -p -e "s/\/\//\//g;" > ${BUILD_DIR}/chromInfo.tab
+    hgsql ${BUILD} -e "load data local infile \"${BUILD_DIR}/chromInfo.tab\" into table chromInfo;"
+
+    # Reload trackDb.ra
+    init_trackDb
+    CWD=`pwd`
+    cd ${TRACKDB_DIR}
+    make alpha DBS=${BUILD}
+    cd $CWD
+    
+    #Load assembly tracks
+    hgLoadBed ${BUILD} contigs ${BUILD_DIR}/contigs.bed
+    hgLoadBed ${BUILD} gaps ${BUILD_DIR}/gaps.bed
+    
+    # GC Percent
+    echo "Creating track: GC Percent"
+    mkdir ${BUILD_DIR}/wib/
+    hgGcPercent -wigOut -doGaps -file=stdout -win=5 ${BUILD} ${BUILD_DIR} | wigEncode stdin ${BUILD_DIR}/gc5Base.wig ${BUILD_DIR}/wib/gc5Base.wib
+    hgLoadWiggle -pathPrefix=/ ${BUILD} gc5Base ${BUILD_DIR}/gc5Base.wig
+    
+    
+    # Depth
+    echo "Creating track: Read Detpth"
+    echo "variableStep  chrom=chrI" > ${BUILD_DIR}/depth.bed
+    python ${SCRIPT_DIR}/coverage.py ${BUILD_DIR}/contigs.bed ${ASSEMBLY_DIR}/454AlignmentInfo.tsv | sort -k 1 -n >> ${BUILD_DIR}/depth.bed
+    wigEncode ${BUILD_DIR}/depth.bed ${BUILD_DIR}/depth.wig ${BUILD_DIR}/wib/depth.wib
+    hgLoadWiggle -pathPrefix=/ ${BUILD} depth ${BUILD_DIR}/depth.wig
+    
+    # Reload trackDb.ra
+    # CWD=`pwd`
+    # cd ${TRACKDB_DIR}
+    # make alpha DBS=${BUILD}
+    # cd $CWD
+}
+
+# Add a fasta file to a genome build (useful if not a 454 run)
+function add_fasta {
+    args=$@
+    BUILD=${args[1]}
+    CHROM=${args[2]}
+    FASTA=${args[3]}
+    BUILD_DIR=${CLIENT_GBDB_DIR}/${BUILD}/
+    
+    if ! mkdir -p ${CLIENT_TRACKDB_DIR}/${BUILD};
+    then
+        echo "Cannot create build directory.";
+        exit 1;
+    fi
+    chmod -R 755 ${BUILD_DIR}
+        
+    # Create chrom
+    if ! cp $3 ${BUILD_DIR}/${BUILD}.fasta;
+    then
+        echo "Cannot copy fasta file to build directory.";
+        exit 1;
+    fi
+    chmod 755 ${BUILD_DIR}/${BUILD}.fasta
+    faToTwoBit ${BUILD_DIR}/${BUILD}.fasta ${BUILD_DIR}/${BUILD}.2bit
+    
+    # Load chrom
+    hgsql ${BUILD} < ${GBDB_DIR}/grp.sql
+    hgsql ${BUILD} -e 'load data local infile "/data/share/ucsc/gbdb/grp.txt" into table grp;'
+    hgsql ${BUILD} < ${KENT_LIB}/chromInfo.sql
+    twoBitInfo ${BUILD_DIR}/${BUILD}.2bit stdout | awk -v TWOBIT="$BUILD_DIR/$BUILD.2bit" '{ print sprintf("%s\t%s\t", $1, $2) TWOBIT }' | perl -p -e "s/\/\//\//g;" > ${BUILD_DIR}/chromInfo.tab
+    hgsql ${BUILD} -e "load data local infile \"${BUILD_DIR}/chromInfo.tab\" into table chromInfo;"
+
+    # Reload trackDb.ra
+    CWD=`pwd`
+    cd ${TRACKDB_DIR}
+    make alpha DBS=${BUILD}
+    cd $CWD
+    
+    init_trackDb
+    
+    # GC Percent
+    echo "Creating track: GC Percent"
+    mkdir ${BUILD_DIR}/wib/
+    hgGcPercent -wigOut -doGaps -file=stdout -win=5 ${BUILD} ${BUILD_DIR} | wigEncode stdin ${BUILD_DIR}/gc5Base.wig ${BUILD_DIR}/wib/gc5Base.wib
+    hgLoadWiggle -pathPrefix=/ ${BUILD} gc5Base ${BUILD_DIR}/gc5Base.wig
+    
+    # Reload trackDb.ra
+    CWD=`pwd`
+    cd ${TRACKDB_DIR}
+    make alpha DBS=${BUILD}
+    cd $CWD
+}
+
+function add_454scaffold_assembly {
+
+    args=$@
+    BUILD=${args[1]}
+    CHROM=${args[2]}
+    ASSEMBLY_DIR=${args[3]}
+    BUILD_DIR=${CLIENT_GBDB_DIR}/${BUILD}/
+
+    mkdir ${CLIENT_TRACKDB_DIR}/${BUILD}
+    chmod -R 755 ${BUILD_DIR}
+
+# Create chrom
+
+    python ${SCRIPT_DIR}/sort_agp.py ${ASSEMBLY_DIR} > ${BUILD_DIR}/454Scaffolds.sorted.txt
+    python ${SCRIPT_DIR}/build_scaffold.py ${BUILD_DIR}/454Scaffolds.sorted.txt ${BUILD_DIR}
+    cat ${BUILD_DIR}/contigs.bed ${BUILD_DIR}/gaps.bed | sort -k2n > ${BUILD_DIR}/assembly.bed
+    python ${SCRIPT_DIR}/chrom.py ${BUILD_DIR}/assembly.bed ${ASSEMBLY_DIR}/454AllContigs.fna > ${BUILD_DIR}/${BUILD}.fasta
+
+    chmod 755 ${BUILD_DIR}/${BUILD}.fasta
+    faToTwoBit ${BUILD_DIR}/${BUILD}.fasta ${BUILD_DIR}/${BUILD}.2bit
+
+    # Load chrom
+    hgsql ${BUILD} < ${GBDB_DIR}/grp.sql
+    hgsql ${BUILD} -e "load data local infile \"${GBDB_DIR}/grp.txt\" into table grp;"
+
+    hgsql ${BUILD} < ${KENT_LIB}/chromInfo.sql
+    twoBitInfo ${BUILD_DIR}/${BUILD}.2bit stdout | awk -v TWOBIT="$BUILD_DIR/$BUILD.2bit" '{ print sprintf("%s\t%s\t", $1, $2) TWOBIT }' | perl -p -e "s/    \/\//\//g;" > ${BUILD_DIR}/chromInfo.tab
+    hgsql ${BUILD} -e "load data local infile \"${BUILD_DIR}/chromInfo.tab\" into table chromInfo;"
+
+    # Reload trackDb.ra
+    init_trackDb
+    CWD=`pwd`
+    cd ${TRACKDB_DIR}
+    make alpha DBS=${BUILD}
+    cd $CWD
+
+    #Load assembly tracks
+    hgLoadBed ${BUILD} contigs ${BUILD_DIR}/contigs.bed
+    hgLoadBed ${BUILD} gaps ${BUILD_DIR}/gaps.bed
+    hgLoadBed ${BUILD} scaffolds ${BUILD_DIR}/scaffolds.bed
+
+    # GC Percent
+    echo "Creating track: GC Percent"
+    mkdir ${BUILD_DIR}/wib/
+    hgGcPercent -wigOut -doGaps -file=stdout -win=5 ${BUILD} ${BUILD_DIR} | wigEncode stdin ${BUILD_DIR}/gc5Base.wig ${BUILD_DIR}/wib/gc5Base.wib
+    hgLoadWiggle -pathPrefix=/ ${BUILD} gc5Base ${BUILD_DIR}/gc5Base.wig
+
+    # Depth
+    echo "Creating track: Read Detpth"
+    echo "variableStep  chrom=chrI" > ${BUILD_DIR}/depth.bed
+    python ${SCRIPT_DIR}/coverage.py ${BUILD_DIR}/contigs.bed ${ASSEMBLY_DIR}/454AlignmentInfo.tsv | sort -k 1 -n >> ${BUILD_DIR}/depth.bed
+    wigEncode ${BUILD_DIR}/depth.bed ${BUILD_DIR}/depth.wig ${BUILD_DIR}/wib/depth.wib
+    hgLoadWiggle -pathPrefix=/ ${BUILD} depth ${BUILD_DIR}/depth.wig
+}
+# Add only the read depth
+function add_depth 
+
+{
+args=$@
+BUILD=${args[1]}
+CHROM=${args[2]}
+ASSEMBLY_DIR=${args[3]}
+BUILD_DIR=${CLIENT_GBDB_DIR}/${BUILD}/
+mkdir ${CLIENT_TRACKDB_DIR}/${BUILD}
+chmod -R 755 ${BUILD_DIR}
+
+# Depth
+    
+    echo "Creating track: Read Depth"
+    echo "variableStep  chrom=chrI" > ${BUILD_DIR}/depth.bed
+    python ${SCRIPT_DIR}/coverage.py ${BUILD_DIR}/contigs.bed ${ASSEMBLY_DIR}/454AlignmentInfo.tsv | sort -k 1 -n >> ${BUILD_DIR}/depth.bed
+    wigEncode ${BUILD_DIR}/depth.bed ${BUILD_DIR}/depth.wig ${BUILD_DIR}/wib/depth.wib
+    hgLoadWiggle -pathPrefix=/ ${BUILD} depth ${BUILD_DIR}/depth.wig
+}
+
+# Update environment variables when CLIENT_NAME changes.
+function update_env {
+    CLIENT_GBDB_DIR=${GBDB_DIR}/${CLIENT_NAME}/
+    CLIENT_BROWSER_ROOT=${BROWSER_WEB_HOME}/browser-${CLIENT_NAME}/
+    CLIENT_BROWSER_WEBROOT=/compgen/browser-${CLIENT_NAME}/cgi-bin/
+    CLIENT_BROWSER_CGIBIN=${BROWSER_WEB_HOME}/browser-${CLIENT_NAME}/cgi-bin/
+    CLIENT_HGCENTRAL=hgcentral_${CLIENT_NAME}
+    CLIENT_TRACKDB_DIR=${TRACKDB_DIR}/${CLIENT_NAME}/
+}
+
+# print usage menu
+function usage {
+    echo -e "${bldwht}cgb -- a program to a create custom instance of the UCSC Genome Browser.
+
+\t NOTE:
+\t   Reset the ${bldylw}CLIENT_NAME${bldwht} for the current session: export ${bldylw}CLIENT_NAME${bldwht}=DrWatson
+\t   All COMMANDs are specific to ${bldylw}CLIENT_NAME${bldwht}.
+
+\t COMMAND          ARGUMENTS -- Description
+\t -------          ------------------------
+\t create_browser   no arguments -- Create a browser instance.
+\t remove_browser   no arguments -- Remove a browser instance.
+
+\t add_clade        CLADE_LABEL ${bldred}CLADE_NAME${bldwht} PRIORITY -- add a clade entry to pulldown menu.
+\t remove_clade                 ${bldred}CLADE_NAME${bldwht}          -- remove a clade entry.
+\t list_clade       List clades.
+
+\t add_genome       ${txtgrn}GENOME${bldwht} ${bldred}CLADE_NAME${bldwht} PRIORITY -- Add a genome entry to pulldown menu. 
+\t remove_genome    ${txtgrn}GENOME${bldwht}                     -- Remove a genome entry.
+\t list_genome      List genomes.              -- List genomes.
+
+\t add_build        ${txtcyn}BUILD${bldwht} BUILD_DESC ${txtgrn}GENOME${bldwht} ${txtpur}CHROM${bldwht} SPECIES SOURCE TAXID -- Add a genome build to the browser.
+
+\t add_454          ${txtcyn}BUILD${bldwht} ${txtpur}CHROM${bldwht} ASSEMBLY_DIR                     -- Add 454 assembly contigs to a build.
+\t add_454_scaffold ${txtcyn}BUILD${bldwht} ${txtpur}CHROM${bldwht} ASSEMBLY_DIR                     -- Add 454 assembly scaffolds to a build.
+\t add_fasta        ${txtcyn}BUILD${bldwht} ${txtpur}CHROM${bldwht} FASTA_FILE                       -- Add a fasta file to a build.
+\t remove_build     ${txtcyn}BUILD${bldwht}                                        -- Remove a build.
+\t list_build       List builds.
+
+\t add_defaultdb    ${txtgrn}GENOME${bldwht} ${txtcyn}BUILD${bldwht} -- Add the a defaultDb entry to pulldown menu. 
+\t remove_defaultdb        ${txtcyn}BUILD${bldwht} -- Remote a defaultDb entry. 
+\t list_defaultdb   List defaultDbs.
+
+\t add_blat         ${txtcyn}BUILD${bldwht} BLAT_PORT1 BLAT_PORT2. Create and load BLAT servers. 
+\t remove_blat      ${txtcyn}BUILD${bldwht} BLAT_PORT1 BLAT_PORT2. Remove and unload BLAT servers.
+\t list_blat        List BLAT servers.
+
+\t add_depth        ${txtcyn}BUILD${bldwht} ${txtpur}CHROM${bldwht} ASSEMBLY_DIR                     -- Add depth to a build.
+\t --help           Print this message.
+"
+}
+
+# Validate number of commandline arguments 
+function validate_args {
+    REQ_ARGS=$1
+    echo $NARGS
+    if [ $NARGS -ne $REQ_ARGS ];
+    then
+        echo "ERROR: This task required $REQ_ARGS arguments."
+        usage
+        exit 1;
+    fi
+}
+
+NARGS=$#
+
+if [ -z "$CLIENT_NAME" ]; then
+    echo "ERROR: CLIENT_NAME must be set to a value, e.g. export CLIENT_NAME=DrWho"
+    exit 1;
+else
+    update_env
+    echo -e "${bldwht}Client name is currently set to ${bldylw}$CLIENT_NAME${bldwht}."
+    echo `dirname $0`
+fi
+
+args=("$@")
+TASK=${args[0]}
+
+case "$TASK" in
+    'show_client')
+    	echo Client name: $CLIENT_NAME
+	    ;;
+    'create_browser')
+        create_instance
+        ;;
+    'remove_browser')
+        remove_instance
+        ;;
+    'add_clade')
+        validate_args 4
+        echo ${args[1]} 
+        echo ${args[2]} 
+        echo ${args[3]}
+        add_clade ${args[1]} ${args[2]} ${args[3]}
+        ;;
+    'remove_clade')
+        validate_args 2
+        remove_clade ${args[1]}
+        ;;
+    'list_clade')
+        list_clade
+        ;;
+    'add_genome')
+        validate_args 4
+        add_genome ${args[1]} ${args[2]} ${args[3]}
+        ;;
+    'remove_genome')
+        validate_args 2
+        remove_genome ${args[1]}
+        ;;
+    'list_genome')
+        list_genome
+        ;;
+
+    'add_defaultdb')
+        validate_args 3
+        add_defaultdb ${args[1]} ${args[2]}
+        ;;
+    'remove_defaultdb')
+        validate_args 2
+        remove_defaultdb ${args[1]}
+        ;;
+    'list_defaultdb')
+        list_defaultdb
+        ;;
+    'add_build')
+        validate_args 8
+        add_build ${args[1]} ${args[2]} ${args[3]} ${args[4]} ${args[5]} ${args[6]} ${args[7]}
+        ;;
+    'add_454')
+        validate_args 4
+        add_454_assembly ${args[1]} ${args[2]} ${args[3]}
+        ;;
+    'add_454_scaffold')
+        validate_args 4
+        add_454scaffold_assembly ${args[1]} ${args[2]} ${args[3]}
+        ;;
+    'add_fasta')
+        validate_args 4
+        add_fasta ${args[1]} ${args[2]} ${args[3]}
+        ;;
+    'remove_build')
+        validate_args 2
+        remove_build ${args[1]}
+        ;;
+    'list_build')
+        list_build
+        ;;
+    'add_blat')
+	    validate_args 4
+	    add_blat ${args[1]} ${args[2]} ${args[3]}
+        ;;
+    'remove_blat')
+        validate_args 4
+        del_blat ${args[1]} ${args[2]} ${args[3]}
+        ;;
+    'list_blat')
+        list_blat
+        ;;
+    'add_depth')
+       validate_args 4
+       add_depth ${args[1]} ${args[2]} ${args[3]}
+       ;;
+    '--help')
+        usage
+        ;;
+    '')
+        usage
+        ;;
+    *)
+        echo -e "Invalid command: $TASK. For help, try cgb --help."
+        ;;
+esac
+
+exit 0;
+

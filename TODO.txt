@@ -1,0 +1,11 @@
+TODO
+====
+
+Documentation:
+ * Write INSTALL.txt
+
+Bugs:
+ * Fix duplicate cgi-bin.
+
+Features:
+ * Redirect STDERR of programs to log file.

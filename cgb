@@ -1,32 +1,4 @@
 #!/bin/bash
-#    cgb -- create custom instances of the UCSC Genome Browser
-#    Copyright (C) 2011  Vincenzo Forgetta, Pascale Marquis
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-
-# TODO: 
-#      - Add check that subsequent steps have the required data from previous steps i.e. clade should have a browser instance, etc.
-#      - Comment code thouroughly, in particular the setting of emvironment variables
-#      - Be more informative when prompting user for passwords i.e. which password.
-#      - Redirect STDERR of programs to log file.
-
-## To grant access for hgsql save text below (remove # signs) to ~/.hg.conf, chmod 600 ~/.hg.conf
-# db.trackDb=trackDb
-# db.host=localhost
-# db.user=browser
-# db.password=genome
-# central.db=hgcentral
-# central.user=browser
-# central.password=genome
-# central.host=localhost
-# central.domain=
 
 ## TERMINAL COLORS
 bldred='\e[1;31m'
@@ -550,18 +522,25 @@ function add_fasta {
     faToTwoBit ${BUILD_DIR}/${BUILD}.fasta ${BUILD_DIR}/${BUILD}.2bit
     
     # Load chrom
+    echo "1"
     hgsql ${BUILD} < ${GBDB_DIR}/grp.sql
+    echo "2"
     hgsql ${BUILD} -e 'load data local infile "/data/share/ucsc/gbdb/grp.txt" into table grp;'
+    echo "3"
     hgsql ${BUILD} < ${KENT_LIB}/chromInfo.sql
+    echo "4"
     twoBitInfo ${BUILD_DIR}/${BUILD}.2bit stdout | awk -v TWOBIT="$BUILD_DIR/$BUILD.2bit" '{ print sprintf("%s\t%s\t", $1, $2) TWOBIT }' | perl -p -e "s/\/\//\//g;" > ${BUILD_DIR}/chromInfo.tab
+    echo "5"
     hgsql ${BUILD} -e "load data local infile \"${BUILD_DIR}/chromInfo.tab\" into table chromInfo;"
 
     # Reload trackDb.ra
     CWD=`pwd`
     cd ${TRACKDB_DIR}
+    echo "6"
     make alpha DBS=${BUILD}
     cd $CWD
     
+    echo "7"
     init_trackDb
     
     # GC Percent
@@ -664,42 +643,42 @@ function update_env {
 
 # print usage menu
 function usage {
-    echo -e "${bldwht}cgb -- a program to a create custom instance of the UCSC Genome Browser.
+    echo -e "cgb -- a program to a create custom instance of the UCSC Genome Browser.
 
 \t NOTE:
-\t   Reset the ${bldylw}CLIENT_NAME${bldwht} for the current session: export ${bldylw}CLIENT_NAME${bldwht}=DrWatson
-\t   All COMMANDs are specific to ${bldylw}CLIENT_NAME${bldwht}.
+\t   To reset the CLIENT_NAME: export CLIENT_NAME=DrWatson
+\t   All COMMANDs are specific to the current CLIENT_NAME.
 
 \t COMMAND          ARGUMENTS -- Description
 \t -------          ------------------------
 \t create_browser   no arguments -- Create a browser instance.
 \t remove_browser   no arguments -- Remove a browser instance.
 
-\t add_clade        CLADE_LABEL ${bldred}CLADE_NAME${bldwht} PRIORITY -- add a clade entry to pulldown menu.
-\t remove_clade                 ${bldred}CLADE_NAME${bldwht}          -- remove a clade entry.
+\t add_clade        CLADE_LABEL CLADE_NAME PRIORITY -- add a clade entry to pulldown menu.
+\t remove_clade                 CLADE_NAME          -- remove a clade entry.
 \t list_clade       List clades.
 
-\t add_genome       ${txtgrn}GENOME${bldwht} ${bldred}CLADE_NAME${bldwht} PRIORITY -- Add a genome entry to pulldown menu. 
-\t remove_genome    ${txtgrn}GENOME${bldwht}                     -- Remove a genome entry.
+\t add_genome       GENOME CLADE_NAME PRIORITY -- Add a genome entry to pulldown menu. 
+\t remove_genome    GENOME                     -- Remove a genome entry.
 \t list_genome      List genomes.              -- List genomes.
 
-\t add_build        ${txtcyn}BUILD${bldwht} BUILD_DESC ${txtgrn}GENOME${bldwht} ${txtpur}CHROM${bldwht} SPECIES SOURCE TAXID -- Add a genome build to the browser.
+\t add_build        BUILD BUILD_DESC GENOME CHROM SPECIES SOURCE TAXID -- Add a genome build to the browser.
 
-\t add_454          ${txtcyn}BUILD${bldwht} ${txtpur}CHROM${bldwht} ASSEMBLY_DIR                     -- Add 454 assembly contigs to a build.
-\t add_454_scaffold ${txtcyn}BUILD${bldwht} ${txtpur}CHROM${bldwht} ASSEMBLY_DIR                     -- Add 454 assembly scaffolds to a build.
-\t add_fasta        ${txtcyn}BUILD${bldwht} ${txtpur}CHROM${bldwht} FASTA_FILE                       -- Add a fasta file to a build.
-\t remove_build     ${txtcyn}BUILD${bldwht}                                        -- Remove a build.
+\t add_454          BUILD CHROM ASSEMBLY_DIR -- Add 454 assembly contigs to a build.
+\t add_454_scaffold BUILD CHROM ASSEMBLY_DIR -- Add 454 assembly scaffolds to a build.
+\t add_fasta        BUILD CHROM FASTA_FILE   -- Add a fasta file to a build.
+\t remove_build     BUILD                    -- Remove a build.
 \t list_build       List builds.
 
-\t add_defaultdb    ${txtgrn}GENOME${bldwht} ${txtcyn}BUILD${bldwht} -- Add the a defaultDb entry to pulldown menu. 
-\t remove_defaultdb        ${txtcyn}BUILD${bldwht} -- Remote a defaultDb entry. 
+\t add_defaultdb    GENOME BUILD -- Add the a defaultDb entry to pulldown menu. 
+\t remove_defaultdb        BUILD -- Remote a defaultDb entry. 
 \t list_defaultdb   List defaultDbs.
 
-\t add_blat         ${txtcyn}BUILD${bldwht} BLAT_PORT1 BLAT_PORT2. Create and load BLAT servers. 
-\t remove_blat      ${txtcyn}BUILD${bldwht} BLAT_PORT1 BLAT_PORT2. Remove and unload BLAT servers.
+\t add_blat         BUILD BLAT_PORT1 BLAT_PORT2. Create and load BLAT servers. 
+\t remove_blat      BUILD BLAT_PORT1 BLAT_PORT2. Remove and unload BLAT servers.
 \t list_blat        List BLAT servers.
 
-\t add_depth        ${txtcyn}BUILD${bldwht} ${txtpur}CHROM${bldwht} ASSEMBLY_DIR                     -- Add depth to a build.
+\t add_depth        BUILD CHROM ASSEMBLY_DIR                     -- Add depth to a build.
 \t --help           Print this message.
 "
 }
@@ -724,7 +703,6 @@ if [ -z "$CLIENT_NAME" ]; then
 else
     update_env
     echo -e "${bldwht}Client name is currently set to ${bldylw}$CLIENT_NAME${bldwht}."
-    echo `dirname $0`
 fi
 
 args=("$@")
@@ -819,7 +797,7 @@ case "$TASK" in
         usage
         ;;
     '')
-        usage
+        echo "No arguments supplied. Try cgb --help."
         ;;
     *)
         echo -e "Invalid command: $TASK. For help, try cgb --help."

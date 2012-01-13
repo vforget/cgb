@@ -8,9 +8,6 @@ Documentation:
    - Set vaiables in cgb.
 
 Bugs:
- * Fix duplicate cgi-bin.
- * If build exists, error occurs. Occurs even if same build is across two genomes.
- * Remove double '/' from urls.
 
 Features:
  * Redirect STDERR of programs to log file.
@@ -18,6 +15,4 @@ Features:
  * Revise to prompt for specific password (APACHE, USER, MYSQL).
 
 Minor Fixes:
- * Remove excess reporting (echo). 
- * Add "STEP" messages to make the procedure clear.
-
+ 

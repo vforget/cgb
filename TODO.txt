@@ -15,4 +15,4 @@ Features:
  * Revise to prompt for specific password (APACHE, USER, MYSQL).
 
 Minor Fixes:
- 
+ * Review Python scripts 

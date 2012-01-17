@@ -6,3 +6,18 @@
 
 trackDb
 webroot
+
+Required binaries from jksrc:
+faToTwoBit
+gfClient
+gfServer
+hgFindSpec
+hgGcPercent
+hgLoadWiggle
+hgsql
+hgTrackDb
+hgWiggle
+tdbQuery
+twoBitInfo
+twoBitToFa
+wigEncode

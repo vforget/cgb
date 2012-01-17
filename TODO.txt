@@ -2,17 +2,29 @@ TODO
 ====
 
 Documentation:
- * Write INSTALL.txt
-   - Setup .hg.conf
-   - Tar cgi-bin.
-   - Set vaiables in cgb.
+ * INSTALL: hgcentral.sql, remove INSERT STATEMENT ... put into WEBROOT.
+ * INSTALL: Setup .hg.conf
+ * INSTALL: Tar cgi-bin.
+ * INSTALL: Set vaiables in cgb.
+ * INSTALL: Advise user to put CGI_BIN within the WEBROOT, or to move the directory after the fact.
+ * INSTALL: Delete ENCODE and goldelPath/help/examples directories prior to making archive to save space.
+ * INSTALL: Modify makefile in trackDb: under "alpha", comment all lines except loadTracks.
+ * INSTALL: Move trackDb.ra to backup location. Avoids loading 751 track definitions!
+ * INSTALL: Advise user in INSTALL that they need to compile a min number of programs from jksrc.
+ * INSTALL: dvise user to create database customTrash in INSTALL.txt.
+ * README: Add into README min port number of 1024 for BLAT servers.
 
 Bugs:
 
 Features:
  * Redirect STDERR of programs to log file.
  * Revise dialogs to be more direct.
- * Revise to prompt for specific password (APACHE, USER, MYSQL).
+ D Revise to prompt for specific password (APACHE, USER, MYSQL).
 
 Minor Fixes:
  * Review Python scripts 
+ D CGB: create tmp folder in browser root, update with this path in hg.conf in cgb.
+ D CGB: Refactor as variables the username, password and database for hg.conf in cgb.
+ D CGB: Write new ScriptAlias and Directory setting for httpd.
+ D CGB: Verify that hg.conf text in cgb has right number of user-defined parameters.
+

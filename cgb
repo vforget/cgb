@@ -4,30 +4,30 @@
 
 ## APACHE/MYSQL VARIABLES
 # Command to restart web server
-APACHE_RESTART_CMD="sudo /etc/init.d/apache2 restart"
+APACHE_RESTART_CMD="sudo /etc/init.d/httpd restart"
 # Domain name of the host
-APACHE_DOMAIN="genomequebec.mcgill.ca"
+APACHE_DOMAIN="127.0.0.1"
 # Apache vhost file.
-APACHE_VHOST=/etc/apache2/vhosts.d/compgen_vhost.conf
+APACHE_VHOST=/etc/httpd/conf/httpd.conf
 # Location where to store each home page
-BROWSER_WEB_HOME=/data/www/htdocs/compgen
+BROWSER_WEB_HOME=/var/www/html
 # Mysql user name that has priviledges to create a database
-MYSQL_USER=vforgetta
+MYSQL_USER=root
 # Command for MySQL. The "-p" specifies password is required for this user.
-MYSQL_CMD="mysql -u $MYSQL_USER -p"
+MYSQL_CMD="mysql -u $MYSQL_USER"
 
 ## UCSC ENV VARIABLES
 
 # Path to UCSC binaries e.g. hgLoadBed, faToTwoBit, gfServer, etc.
-UCSC_BIN=/data/share/ucsc/bin
+UCSC_BIN=/gbdb/bin
 # Gzip TAR archive that contains the UCSC Genome Browser CGI binaries and HTML files.
-BROWSER_WEB_TEMPLATE_DIST=${BROWSER_WEB_HOME}/browser-template.25112010.tar.gz
+BROWSER_WEB_TEMPLATE_DIST=${BROWSER_WEB_HOME}/browser.tar.gz
 # Location to store the genome builds and tracks
-GBDB_DIR=/data/share/ucsc/gbdb
+GBDB_DIR=/gbdb
 # Source code for the UCSC Genome Browser, specifically the src/hg/lib directory
-KENT_LIB=/data/share/ucsc/jksrc/kent/src/hg/li
+KENT_LIB=/gbdb/jksrc/kent/src/hg/lib/
 # Location of the trackDb directory i.e. where to store the trackDb.ra files.
-TRACKDB_DIR=/data/share/ucsc/trackDb25112010
+TRACKDB_DIR=/gbdb/jksrc/kent/src/hg/makeDb/trackDb
 
 # !!! DO NOT MODIFY THESE VARIABLES !!!
 export PATH=$PATH:${UCSC_BIN}
@@ -240,7 +240,7 @@ customTracks.host=localhost
 customTracks.user=browser
 customTracks.password=genome
 customTracks.useAll=yes
-customTracks.tmpdir=/data/www/htdocs/compgen/tmp
+customTracks.tmpdir=/tmp
 hgTracks.trackReordering=on
 " > ${CLIENT_BROWSER_CGIBIN}/hg.conf
 
@@ -532,8 +532,8 @@ function add_454_assembly {
     faToTwoBit ${BUILD_DIR}/${BUILD}.fasta ${BUILD_DIR}/${BUILD}.2bit
     
     # Load chrom
-    hgsql ${BUILD} < ${GBDB_DIR}/grp.sql
-    hgsql ${BUILD} -e "load data local infile \"${GBDB_DIR}/grp.txt\" into table grp;"
+    hgsql ${BUILD} < ${KENT_LIB}/grp.sql
+    # hgsql ${BUILD} -e "load data local infile \"${KENT_LIB}/grp.txt\" into table grp;"
     hgsql ${BUILD} < ${KENT_LIB}/chromInfo.sql
     twoBitInfo ${BUILD_DIR}/${BUILD}.2bit stdout | awk -v TWOBIT="$BUILD_DIR/$BUILD.2bit" '{ print sprintf("%s\t%s\t", $1, $2) TWOBIT }' | perl -p -e "s/\/\//\//g;" > ${BUILD_DIR}/chromInfo.tab
     hgsql ${BUILD} -e "load data local infile \"${BUILD_DIR}/chromInfo.tab\" into table chromInfo;"
@@ -596,9 +596,9 @@ function add_fasta {
     
     # Load chrom
     echo "1"
-    hgsql ${BUILD} < ${GBDB_DIR}/grp.sql
-    echo "2"
-    hgsql ${BUILD} -e 'load data local infile "/data/share/ucsc/gbdb/grp.txt" into table grp;'
+    hgsql ${BUILD} < ${KENT_LIB}/grp.sql
+    # echo "2"
+    # hgsql ${BUILD} -e 'load data local infile "${KENT_LIB}/grp.txt" into table grp;'
     echo "3"
     hgsql ${BUILD} < ${KENT_LIB}/chromInfo.sql
     echo "4"
@@ -651,8 +651,8 @@ function add_454scaffold_assembly {
     faToTwoBit ${BUILD_DIR}/${BUILD}.fasta ${BUILD_DIR}/${BUILD}.2bit
 
     # Load chrom
-    hgsql ${BUILD} < ${GBDB_DIR}/grp.sql
-    hgsql ${BUILD} -e "load data local infile \"${GBDB_DIR}/grp.txt\" into table grp;"
+    hgsql ${BUILD} < ${KENT_LIB}/grp.sql
+    # hgsql ${BUILD} -e "load data local infile \"${GBDB_DIR}/grp.txt\" into table grp;"
 
     hgsql ${BUILD} < ${KENT_LIB}/chromInfo.sql
     twoBitInfo ${BUILD_DIR}/${BUILD}.2bit stdout | awk -v TWOBIT="$BUILD_DIR/$BUILD.2bit" '{ print sprintf("%s\t%s\t", $1, $2) TWOBIT }' | perl -p -e "s/    \/\//\//g;" > ${BUILD_DIR}/chromInfo.tab

@@ -2,7 +2,7 @@
 
 ### SETUP
 
-## APACHE/MYSQL VARIABLES
+## APACHE VARIABLES
 # Command to restart web server
 APACHE_RESTART_CMD="sudo /etc/init.d/httpd restart"
 # Domain name of the host
@@ -13,6 +13,8 @@ APACHE_VHOST=/etc/httpd/conf/httpd.conf
 APACHE_BROWSER_ROOT=""
 # Location where to store each home page
 BROWSER_WEB_HOME=/var/www/html
+
+## MySQL VARIABLES
 # Mysql user name that has priviledges to create a database
 MYSQL_USER=root
 # Command for MySQL. The "-p" specifies password is required for this user.
@@ -26,8 +28,7 @@ READWRITE_PASSWORD=genome
 # Host where the MySQL database resides (default same as Apache i.e. localhost)
 DB_HOST="localhost"
 
-## UCSC ENV VARIABLES
-
+## UCSC INSTALL VARIABLES
 # Path to UCSC binaries e.g. hgLoadBed, faToTwoBit, gfServer, etc.
 UCSC_BIN=/gbdb/bin
 # Gzip TAR archive that contains the UCSC Genome Browser CGI binaries and HTML files.
@@ -188,7 +189,7 @@ function create_instance {
 
     # Setup password
     echo "CGB: ** YOUR INPUT IS REQUIRED **"
-    echo "CGB: Set a new password for CLIENT_NAME ${CLIENT_NAME}:"
+    echo "CGB: CREATE a password for CLIENT_NAME ${CLIENT_NAME}:"
     until htpasswd -c ${CLIENT_BROWSER_ROOT}/password ${CLIENT_NAME}; do
         echo "CGB: Error setting client password. Retry ..."
     done
@@ -217,7 +218,7 @@ function create_instance {
     
     echo "CGB: Restarting apache web server ..."
     echo "CGB: ** YOUR INPUT IS REQUIRED **"
-    echo "CGB: This may ask you for your UNIX login (or root) password"
+    echo "CGB: This may ask you for your USER or ROOT password"
    
     until ${APACHE_RESTART_CMD}; do
         echo "CGB: Error restarting apache. Retry ..."
@@ -226,22 +227,34 @@ function create_instance {
     # Create new hg.conf
     echo "CGB: Setting up hg.conf in ${CLIENT_BROWSER_CGIBIN}"
     echo  "
+db.trackDb=trackDb
 db.host=${DB_HOST}
 db.user=${READONLY_USER}
 db.password=${READONLY_PASSWORD}
-db.trackDb=trackDb
+
 browser.indelOptions=on
+
+central.db=${CLIENT_HGCENTRAL}
+central.host=${DB_HOST}
+central.user=${READWRITE_USER}
+central.password=${READWRITE_PASSWORD}
+central.domain=${APACHE_DOMAIN}
+
 customTracks.host=${DB_HOST}
 customTracks.user=${READWRITE_USER}
 customTracks.password=${READWRITE_PASSWORD}
 customTracks.useAll=yes
 customTracks.tmpdir=${CLIENT_BROWSER_ROOT}/tmp
+
+
+backupcentral.db=${CLIENT_HGCENTRAL}
 backupcentral.host=${DB_HOST}
 backupcentral.user=${READWRITE_USER}
 backupcentral.password=${READWRITE_PASSWORD}
-backupcentral.domain=${DB_HOST}
+backupcentral.domain=${APACHE_DOMAIN}
+
 browser.documentRoot=${CLIENT_BROWSER_ROOT}
-backupcentral.db=${CLIENT_HGCENTRAL}
+
 " > ${CLIENT_BROWSER_CGIBIN}/hg.conf
 
     chmod 444 ${CLIENT_BROWSER_CGIBIN}/hg.conf
@@ -531,6 +544,7 @@ function add_454_assembly {
     
     # Load chrom
     hgsql ${BUILD} < ${KENT_LIB}/grp.sql
+    # DEPRECATED AS OF 17.01.2012
     # hgsql ${BUILD} -e "load data local infile \"${KENT_LIB}/grp.txt\" into table grp;"
     hgsql ${BUILD} < ${KENT_LIB}/chromInfo.sql
     twoBitInfo ${BUILD_DIR}/${BUILD}.2bit stdout | awk -v TWOBIT="$BUILD_DIR/$BUILD.2bit" '{ print sprintf("%s\t%s\t", $1, $2) TWOBIT }' | perl -p -e "s/\/\//\//g;" > ${BUILD_DIR}/chromInfo.tab
@@ -596,6 +610,7 @@ function add_fasta {
     echo "1"
     hgsql ${BUILD} < ${KENT_LIB}/grp.sql
     # echo "2"
+    # DEPRECATED AS OF 17.01.2012
     # hgsql ${BUILD} -e 'load data local infile "${KENT_LIB}/grp.txt" into table grp;'
     echo "3"
     hgsql ${BUILD} < ${KENT_LIB}/chromInfo.sql
@@ -685,13 +700,13 @@ function add_454scaffold_assembly {
 function add_depth 
 
 {
-args=$@
-BUILD=${args[1]}
-CHROM=${args[2]}
-ASSEMBLY_DIR=${args[3]}
-BUILD_DIR=${CLIENT_GBDB_DIR}/${BUILD}/
-mkdir ${CLIENT_TRACKDB_DIR}/${BUILD}
-chmod -R 755 ${BUILD_DIR}
+    args=$@
+    BUILD=${args[1]}
+    CHROM=${args[2]}
+    ASSEMBLY_DIR=${args[3]}
+    BUILD_DIR=${CLIENT_GBDB_DIR}/${BUILD}/
+    mkdir ${CLIENT_TRACKDB_DIR}/${BUILD}
+    chmod -R 755 ${BUILD_DIR}
 
 # Depth
     
@@ -704,12 +719,12 @@ chmod -R 755 ${BUILD_DIR}
 
 # Update environment variables when CLIENT_NAME changes.
 function update_env {
-    CLIENT_GBDB_DIR=${GBDB_DIR}/${CLIENT_NAME}/
+    CLIENT_GBDB_DIR=${GBDB_DIR}/${CLIENT_NAME}
     CLIENT_BROWSER_ROOT=${BROWSER_WEB_HOME}/browser-${CLIENT_NAME}
-    CLIENT_BROWSER_WEBROOT=${APACHE_BROWSER_ROOT}/browser-${CLIENT_NAME}/cgi-bin/
-    CLIENT_BROWSER_CGIBIN=${BROWSER_WEB_HOME}/browser-${CLIENT_NAME}/cgi-bin/
+    CLIENT_BROWSER_WEBROOT=${APACHE_BROWSER_ROOT}/browser-${CLIENT_NAME}/cgi-bin
+    CLIENT_BROWSER_CGIBIN=${BROWSER_WEB_HOME}/browser-${CLIENT_NAME}/cgi-bin
     CLIENT_HGCENTRAL=hgcentral_${CLIENT_NAME}
-    CLIENT_TRACKDB_DIR=${TRACKDB_DIR}/${CLIENT_NAME}/
+    CLIENT_TRACKDB_DIR=${TRACKDB_DIR}/${CLIENT_NAME}
 }
 
 ## PROGRAM MENU
@@ -718,7 +733,7 @@ function usage {
     echo -e "cgb -- a program to a create custom instance of the UCSC Genome Browser.
 
 \t NOTE:
-\t   To reset the CLIENT_NAME: export CLIENT_NAME=DrWatson
+\t   To set the CLIENT_NAME: export CLIENT_NAME=DrWatson
 \t   All COMMANDs are specific to the current CLIENT_NAME.
 
 \t COMMAND          ARGUMENTS    -- Description

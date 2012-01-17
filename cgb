@@ -9,12 +9,22 @@ APACHE_RESTART_CMD="sudo /etc/init.d/httpd restart"
 APACHE_DOMAIN="127.0.0.1"
 # Apache vhost file.
 APACHE_VHOST=/etc/httpd/conf/httpd.conf
+# Root directory for all browser instances.
+APACHE_BROWSER_ROOT=""
 # Location where to store each home page
 BROWSER_WEB_HOME=/var/www/html
 # Mysql user name that has priviledges to create a database
 MYSQL_USER=root
 # Command for MySQL. The "-p" specifies password is required for this user.
 MYSQL_CMD="mysql -u $MYSQL_USER"
+# MySQL user with read-only access
+READONLY_USER=readonly
+READONLY_PASSWORD=access
+# MySQL user with read/write access
+READWRITE_USER=browser
+READWRITE_PASSWORD=genome
+# Host where the MySQL database resides (default same as Apache i.e. localhost)
+DB_HOST="localhost"
 
 ## UCSC ENV VARIABLES
 
@@ -170,7 +180,7 @@ function create_instance {
 
     echo "CGB: Extracting UCSC Genome Browser binaries ..."
     # Extract browser template, set permissions
-    tar -C $CLIENT_BROWSER_ROOT -xzf $BROWSER_WEB_TEMPLATE_DIST
+    tar -C $CLIENT_BROWSER_ROOT/ -xzf $BROWSER_WEB_TEMPLATE_DIST
     chgrp -R apache $CLIENT_BROWSER_ROOT/js
     chgrp -R apache $CLIENT_BROWSER_ROOT/trash
     chmod -R 775 $CLIENT_BROWSER_ROOT/js
@@ -185,16 +195,14 @@ function create_instance {
 
     # Setup apache for the client
     echo "CGB: ** YOUR INPUT IS REQUIRED **"
-    echo "    COPY THE CODE BELOW AND PASTE INTO YOUR VIRTUAL HOSTS FILE,"
+    echo "    COPY THE CODE BELOW AND PASTE INTO YOUR WEB SERVER CONFIG FILE,"
     echo "    e.g. ${APACHE_VHOST}, "
     echo "    JUST ABOVE THE LAST LINE \"</VirtualHost>\"";
     echo "
         # Created using CGB on `date`
         ScriptAlias ${CLIENT_BROWSER_WEBROOT} \"${CLIENT_BROWSER_CGIBIN}\"
         <Directory \"${CLIENT_BROWSER_CGIBIN}\">
-            XBitHack On
             Options ExecCGI +Includes
-            AddHandler cgi-script .pl
             # To disable password-protection comment the FOUR lines below,
             # i.e. add a # in front of each line.
             AuthType Basic
@@ -217,31 +225,23 @@ function create_instance {
 
     # Create new hg.conf
     echo "CGB: Setting up hg.conf in ${CLIENT_BROWSER_CGIBIN}"
-    echo  "db.host=localhost
-db.user=readonly
-db.password=access
+    echo  "
+db.host=${DB_HOST}
+db.user=${READONLY_USER}
+db.password=${READONLY_PASSWORD}
 db.trackDb=trackDb
-dg.grp=grp
-browser.documentRoot=${CLIENT_BROWSER_ROOT}
-central.db=${CLIENT_HGCENTRAL}
-backupcentral.db=${CLIENT_HGCENTRAL}
 browser.indelOptions=on
-central.host=localhost
-central.user=readwrite
-central.password=update
-central.domain=.genomequebec.mcgill.ca
-browser.background=../images/floret.jpg
-hgTracks.trackReordering=on
-backupcentral.host=localhost
-backupcentral.user=readwrite
-backupcentral.password=update
-backupcentral.domain=local
-customTracks.host=localhost
-customTracks.user=browser
-customTracks.password=genome
+customTracks.host=${DB_HOST}
+customTracks.user=${READWRITE_USER}
+customTracks.password=${READWRITE_PASSWORD}
 customTracks.useAll=yes
-customTracks.tmpdir=/tmp
-hgTracks.trackReordering=on
+customTracks.tmpdir=${CLIENT_BROWSER_ROOT}/tmp
+backupcentral.host=${DB_HOST}
+backupcentral.user=${READWRITE_USER}
+backupcentral.password=${READWRITE_PASSWORD}
+backupcentral.domain=${DB_HOST}
+browser.documentRoot=${CLIENT_BROWSER_ROOT}
+backupcentral.db=${CLIENT_HGCENTRAL}
 " > ${CLIENT_BROWSER_CGIBIN}/hg.conf
 
     chmod 444 ${CLIENT_BROWSER_CGIBIN}/hg.conf
@@ -251,15 +251,13 @@ hgTracks.trackReordering=on
 create database ${CLIENT_HGCENTRAL};
 use ${CLIENT_HGCENTRAL};
 source ${CLIENT_BROWSER_ROOT}/hgcentral.sql;
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on ${CLIENT_HGCENTRAL}.* to browser@localhost IDENTIFIED BY 'genome';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on hgFixed.* to browser@localhost IDENTIFIED BY 'genome';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on ${CLIENT_HGCENTRAL}.* to readwrite@localhost IDENTIFIED BY 'update';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on hgFixed.* to readwrite@localhost IDENTIFIED BY 'update';
-GRANT SELECT on ${CLIENT_HGCENTRAL}.* to readonly@localhost IDENTIFIED BY 'access';
-GRANT SELECT on hgFixed.* to readonly@localhost IDENTIFIED BY 'access';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on proteins01.* to browser@localhost IDENTIFIED BY 'genome';
-GRANT SELECT on proteins01.* to readonly@localhost IDENTIFIED BY 'access';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on customTrash.* to browser@localhost IDENTIFIED by 'genome';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on ${CLIENT_HGCENTRAL}.* to ${READWRITE_USER}@${DB_HOST} IDENTIFIED BY '${READWRITE_PASSWORD}';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on hgFixed.* to ${READWRITE_USER}@${DB_HOST} IDENTIFIED BY '${READWRITE_PASSWORD}';
+GRANT SELECT on ${CLIENT_HGCENTRAL}.* to ${READONLY_USER}@${DB_HOST} IDENTIFIED BY '${READWRITE_PASSWORD}';
+GRANT SELECT on hgFixed.* to ${READONLY_USER}@${DB_HOST} IDENTIFIED BY '${READONLY_USER}';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on proteins01.* to ${READWRITE_USER}@${DB_HOST} IDENTIFIED BY '${READWRITE_PASSWORD}';
+GRANT SELECT on proteins01.* to ${READONLY_USER}@${DB_HOST} IDENTIFIED BY '${READONLY_USER}';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER on customTrash.* to ${READWRITE_USER}@${DB_HOST} IDENTIFIED BY '${READWRITE_PASSWORD}';
 ;" > $CLIENT_GBDB_DIR/${CLIENT_HGCENTRAL}.sql
     
     echo "CGB: Creating database ${CLIENT_HGCENTRAL}"
@@ -305,7 +303,7 @@ function remove_instance {
             fi
         done
         echo -e "CGB: Don't forget to:
-CGB:\t- Remove the entry in /etc/apache2/vhosts.d/compgen_vhost.conf.
+CGB:\t- Remove the entry in ${APACHE_VHOST}.
 CGB:\t- Unload the BLAT servers for the builds.
 "
     else
@@ -707,8 +705,8 @@ chmod -R 755 ${BUILD_DIR}
 # Update environment variables when CLIENT_NAME changes.
 function update_env {
     CLIENT_GBDB_DIR=${GBDB_DIR}/${CLIENT_NAME}/
-    CLIENT_BROWSER_ROOT=${BROWSER_WEB_HOME}/browser-${CLIENT_NAME}/
-    CLIENT_BROWSER_WEBROOT=/compgen/browser-${CLIENT_NAME}/cgi-bin/
+    CLIENT_BROWSER_ROOT=${BROWSER_WEB_HOME}/browser-${CLIENT_NAME}
+    CLIENT_BROWSER_WEBROOT=${APACHE_BROWSER_ROOT}/browser-${CLIENT_NAME}/cgi-bin/
     CLIENT_BROWSER_CGIBIN=${BROWSER_WEB_HOME}/browser-${CLIENT_NAME}/cgi-bin/
     CLIENT_HGCENTRAL=hgcentral_${CLIENT_NAME}
     CLIENT_TRACKDB_DIR=${TRACKDB_DIR}/${CLIENT_NAME}/

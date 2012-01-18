@@ -19,12 +19,8 @@ Bugs:
 Features:
  * Redirect STDERR of programs to log file.
  * Revise dialogs to be more direct.
- D Revise to prompt for specific password (APACHE, USER, MYSQL).
 
 Minor Fixes:
  * Review Python scripts 
- D CGB: create tmp folder in browser root, update with this path in hg.conf in cgb.
- D CGB: Refactor as variables the username, password and database for hg.conf in cgb.
- D CGB: Write new ScriptAlias and Directory setting for httpd.
- D CGB: Verify that hg.conf text in cgb has right number of user-defined parameters.
+
 

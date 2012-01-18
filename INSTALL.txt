@@ -1,13 +1,47 @@
-1- Setup .hg.conf:
+cgb -- create custom instances of the UCSC Genome Browser
+=========================================================
+
+CONTENTS
+--------
+/A SUMMARY
+/B SYSTEM REQUIRMENTS
+/C SOFTWARE REQUIREMENTS
+/D SETUP
+/E AUTHOR
+
+
+/A SUMMARY
+This document explains the how to setup cgb.
+
+/B SYSTEM REQUIREMENTS
+cgb has the same system requirements as the UCSC Genome Browser.
+
+/C SOFTWARE REQUIREMENTS
+cgb requires:
+
+* Apache web server.
+* MySQL database server.
+* A local install of the UCSC Genome Browser.
+  See http://genome.ucsc.edu/admin/mirror.html for a description on 
+  how to install the UCSC Genome Browser. You do NOT need to install 
+  a full mirror, just the browser. For alternate instructions see 
+  http://genomewiki.ucsc.edu/index.php/Browser_Installation.
+
+/D SETUP
+To properly setup he browser installation for cgb follow these steps:
+ 1. 
+
+
+/E AUTHOR
+Written by Vince Forgetta.
 
 2- Archive browser framework:
 
 3- Check permissions of directories:
-
 trackDb
 webroot
 
-Required binaries from jksrc:
+* Compile the following binaries from jksrc:
 faToTwoBit
 gfClient
 gfServer

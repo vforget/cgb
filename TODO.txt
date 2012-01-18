@@ -3,11 +3,12 @@ TODO
 
 Documentation:
  * INSTALL: hgcentral.sql, remove INSERT STATEMENT ... put into WEBROOT.
+ * INSTALL: Delete ENCODE and goldelPath/help/examples directories prior to making archive to save space.
  * INSTALL: Setup .hg.conf
  * INSTALL: Tar cgi-bin.
  * INSTALL: Set vaiables in cgb.
  * INSTALL: Advise user to put CGI_BIN within the WEBROOT, or to move the directory after the fact.
- * INSTALL: Delete ENCODE and goldelPath/help/examples directories prior to making archive to save space.
+
  * INSTALL: Modify makefile in trackDb: under "alpha", comment all lines except loadTracks.
  * INSTALL: Move trackDb.ra to backup location. Avoids loading 751 track definitions!
  * INSTALL: Advise user in INSTALL that they need to compile a min number of programs from jksrc.

@@ -14,44 +14,119 @@ CONTENTS
 This document explains the how to setup cgb.
 
 /B SYSTEM REQUIREMENTS
-cgb has the same system requirements as the UCSC Genome Browser.
+System requirements depends heavily on intended usage.  As of 2010, the UCSC Genome Browser at
+http://genome.ucsc.edu has:
+
+8 CPU cores
+Intel(R) Xeon(R) CPU L5420  @ 2.50GHz
+64 Gb of memory
+38 Tb of disk space, 12 Tb currently used
+
+From https://lists.soe.ucsc.edu/pipermail/genome-mirror/2010-September/002088.html
+
+As of early 2012, an installation that serves a few dozen users has on the following:
+
+8 CPU cores 
+Intel(R) Xeon(R) CPU E5450 @ 3.00GHz
+16 Gb of memory
+1 Tb of disk space, 333 Gb currently used
+
+A test enviroment I have running on Fedora 16 is:
+
+Intel(R) Core(TM) i7 CPU @ 2.67GHz
+6 Gb of memory
+500 Gb of disk space.
 
 /C SOFTWARE REQUIREMENTS
 cgb requires:
 
-* Apache web server.
-* MySQL database server.
 * A local install of the UCSC Genome Browser.
-  See http://genome.ucsc.edu/admin/mirror.html for a description on 
-  how to install the UCSC Genome Browser. You do NOT need to install 
-  a full mirror, just the browser. For alternate instructions see 
+  See http://genome.ucsc.edu/admin/mirror.html for how to install 
+  the UCSC Genome Browser. You do NOT need to install a full mirror, 
+  just the browser. For alternate instructions see 
   http://genomewiki.ucsc.edu/index.php/Browser_Installation.
+  Keep in mind that a local installation of the UCSC Genome Browser
+  requires Apache, MySQL, gcc, among other programs. See 
+  http://genome.ucsc.edu/admin/mirror.html for more information.
 
 /D SETUP
-To properly setup he browser installation for cgb follow these steps:
- 1. 
 
+To setup cgb:
+
+1. Cgb requires that you have administrator access to Apache and MySQL.
+
+2. Prepare an archive of the UCSC Genome Browser installaion.  Variables such
+   as WEBROOT or CGI_BIN refer to http://genome.ucsc.edu/admin/mirror.html.
+   
+ * Move the cgi-bin directory i.CGI_BIN to within WEBROOT.  This makes generating a 
+   complete archive easier.
+ * Download hgcentral.sql and save it to WEBROOT. You can get a copy of hgcentral at:
+   http://hgdownload.cse.ucsc.edu/admin/hgcentral.sql. Delete the INSERT statements from  
+   hgcentral.sql.
+ * Optional: To save disk space delete the directories goldelPath/help/examples and 
+   ENCODE/ from WEBROOT.
+ * Tar and compress WEBROOT:
+   cd $WEBROOT
+   tar cvzf ../$WEBROOT.tar.gz *
+
+3. Setup .hg.conf:
+
+ * If not already done so, setup a .hg.conf file in your home directory. 
+   See http://genomewiki.ucsc.edu/index.php/Hg.conf for more details.  
+   Mine looks like: 
+
+   db.trackDb=trackDb
+   db.host=localhost
+   db.user=browser
+   db.password=genome
+   central.db=hgcentral
+   central.user=hguser
+   central.password=access
+   central.host=localhost
+   central.domain=
+   
+   Set the file mode to 600: chmod 600 ~/.hg.conf
+
+4. Prepare files from jksrc:
+ 
+ * Where you installed jksrc <some_path>/jksrc/kent/src/hg/makeDb/trackDb/makefile, 
+   modify the alpha rule by commenting out all command EXCEPT ./loadTracks.
+ * In the same directory, backup the trackDb.ra file:
+   
+   $ mv trackDb.ra trackDb.bak
+   $ touch trackDb.ra
+
+   This avoids loading the hundreds of track definitions.
+
+
+5. Create a customTrash database:
+   
+   In MySQL:
+
+   create database customTrash;
+
+6. Compile minimum program set from jksrc:
+
+The following programs from the jksrc source code are required by cgb:
+  
+  faToTwoBit
+  gfClient
+  gfServer
+  hgFindSpec
+  hgGcPercent
+  hgLoadWiggle
+  hgsql
+  hgTrackDb
+  hgWiggle
+  tdbQuery
+  twoBitInfo
+  twoBitToFa
+  wigEncode
+
+7. Set variables in cgb
+
+   In the cgb script, edit the Setup variables to reflect your current setup.
 
 /E AUTHOR
 Written by Vince Forgetta.
-
-2- Archive browser framework:
-
-3- Check permissions of directories:
-trackDb
-webroot
-
-* Compile the following binaries from jksrc:
-faToTwoBit
-gfClient
-gfServer
-hgFindSpec
-hgGcPercent
-hgLoadWiggle
-hgsql
-hgTrackDb
-hgWiggle
-tdbQuery
-twoBitInfo
-twoBitToFa
-wigEncode
+Contact: vincenzo.forgetta at mail.mcgill.ca

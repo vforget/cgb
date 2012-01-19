@@ -44,6 +44,8 @@ The usage of cgb can be divided into the following sections (see below for more 
     for GC percent, read depth, contigs and gaps, and scaffolds.
 * Add BLAT servers: add entry for DNA and translated BLAT to hgcentral database. Start BLAT servers at specified port numbers.
 
+NOTE: When adding BLAT servers, be sure to use port numbers above 1024.
+
 Each section has methods to add, remove and list entries (see below).
 
 $ cgb

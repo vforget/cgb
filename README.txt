@@ -87,5 +87,9 @@ $ cgb add_build ec1 Build1 K12 chrI "E. coli strain K-12" "MUGQIC/NCBI" 562
 $ cgb add_454 ec1 chrI /path/to/454/assembly
 $ cgb add_blat ec1 12345 12346
 
+An example of a custom *C. difficile* UCSC Genome Browser can be found at:
+
+http://www.genomequebec.mcgill.ca/compgen/browser/cgi-bin/hgGateway
+
 /D AUTHOR
 Written by Vince Forgetta.

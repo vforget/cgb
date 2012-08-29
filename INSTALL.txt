@@ -4,7 +4,7 @@ cgb -- create custom instances of the UCSC Genome Browser
 CONTENTS
 --------
 /A SUMMARY
-/B SYSTEM REQUIRMENTS
+/B SYSTEM REQUIREMENTS
 /C SOFTWARE REQUIREMENTS
 /D SETUP
 /E AUTHOR
@@ -61,8 +61,8 @@ To setup cgb:
  * Move the cgi-bin directory i.CGI_BIN to within WEBROOT.  This makes generating a 
    complete archive easier.
  * Download hgcentral.sql and save it to WEBROOT. You can get a copy of hgcentral at:
-   http://hgdownload.cse.ucsc.edu/admin/hgcentral.sql. Delete the INSERT statements from  
-   hgcentral.sql.
+   http://hgdownload.cse.ucsc.edu/admin/hgcentral.sql. Delete the INSERT and REPLACE 
+   statements from hgcentral.sql.
  * Optional: To save disk space delete the directories goldelPath/help/examples and 
    ENCODE/ from WEBROOT.
  * Tar and compress WEBROOT:
@@ -91,7 +91,8 @@ To setup cgb:
  
  * Where you installed jksrc <some_path>/jksrc/kent/src/hg/makeDb/trackDb/makefile, 
    modify the alpha rule by commenting out all command EXCEPT ./loadTracks.
- * In the same directory, backup the trackDb.ra file:
+ * In the <some_path>/jksrc/kent/src/hg/makeDb/trackDb/ directory, 
+   backup the trackDb.ra file:
    
    $ mv trackDb.ra trackDb.bak
    $ touch trackDb.ra

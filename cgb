@@ -9,8 +9,9 @@ APACHE_RESTART_CMD="sudo /etc/init.d/httpd restart"
 APACHE_DOMAIN="127.0.0.1"
 # Apache vhost file.
 APACHE_VHOST=/etc/httpd/conf/httpd.conf
-# Root directory for all browser instances.
-APACHE_BROWSER_ROOT=""
+# Root directory for all browser instances. 
+# Usually "/", but if you have virtual hosts might be a subdirectory of the webroot e.g., "/vhost1"
+APACHE_BROWSER_ROOT="/"
 # Location where to store each home page
 BROWSER_WEB_HOME=/var/www/html
 

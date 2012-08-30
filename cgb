@@ -222,7 +222,12 @@ function create_instance {
     echo "CGB: This may ask you for your USER or ROOT password"
    
     until ${APACHE_RESTART_CMD}; do
-        echo "CGB: Error restarting apache. Retry ..."
+        echo "CGB: Error restarting apache. Retry (y/n)? "
+        read ans
+        if [ "$ans" = 'n' ];
+        then
+            break;
+        fi
     done
 
     # Create new hg.conf

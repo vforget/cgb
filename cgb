@@ -17,7 +17,8 @@ BROWSER_WEB_HOME=/var/www/html
 ## MySQL VARIABLES
 # Mysql user name that has priviledges to create a database
 MYSQL_USER=root
-# Command for MySQL. The "-p" specifies password is required for this user.
+# Command for MySQL. 
+# Add "-p" to the command below to specify that a password is required for this user i.e., "mysql -u $MYSQL_USER -p"
 MYSQL_CMD="mysql -u $MYSQL_USER"
 # MySQL user with read-only access
 READONLY_USER=readonly

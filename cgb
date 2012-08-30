@@ -183,6 +183,7 @@ function create_instance {
     # Extract browser template, set permissions
     tar -C $CLIENT_BROWSER_ROOT/ -xzf $BROWSER_WEB_TEMPLATE_DIST
     chgrp -R apache $CLIENT_BROWSER_ROOT/js
+    mkdir -p $CLIENT_BROWSER_ROOT/trash
     chgrp -R apache $CLIENT_BROWSER_ROOT/trash
     chmod -R 775 $CLIENT_BROWSER_ROOT/js
     chmod -R 775 $CLIENT_BROWSER_ROOT/trash
